@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "42735035324",
+    "project_id": "friendlymartapp-e641b",
+    "storage_bucket": "friendlymartapp-e641b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:42735035324:android:c47cdb581440d51b5701b9",
+        "android_client_info": {
+          "package_name": "com.example.friendlymart"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBrQIChCKlvBWroA6cP9FZgbcVxm9VetwE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
