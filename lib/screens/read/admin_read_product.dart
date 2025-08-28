@@ -70,12 +70,12 @@ class _ReadProductsPageState extends State<ReadProductsPage> {
         stream: (selectedCategory == "All")
             ? FirebaseFirestore.instance
             .collection('products')
-            .orderBy('name')
+//            .orderBy('name')
             .snapshots()
             : FirebaseFirestore.instance
             .collection('products')
             .where('category', isEqualTo: selectedCategory)
-            .orderBy('name')
+//            .orderBy('name')
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
