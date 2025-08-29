@@ -205,7 +205,7 @@ class _CreateProductPageState extends State<CreateProductPage> {
 
               // ✅ Category Dropdown
               DropdownButtonFormField<String>(
-                value: _selectedCategory,
+                initialValue: _selectedCategory,
                 decoration: _inputDecoration("Category"),
                 items: _categories
                     .map((cat) => DropdownMenuItem(

@@ -71,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 context, MaterialPageRoute(builder: (_) => RiderDashboard()));
           } else {
             Navigator.pushReplacement(
-                context, MaterialPageRoute(builder: (_) => CustomerDashboard()));
+                context, MaterialPageRoute(builder: (_) => CustomerDashboardPage()));
           }
         },
       ).show();

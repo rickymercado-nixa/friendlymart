@@ -15,6 +15,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _phoneContoller = TextEditingController();
+  final _addressController = TextEditingController();
 
   bool _isLoading = false;
   String _selectedRole = "customer";
@@ -25,6 +26,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _phoneContoller.dispose();
+    _addressController.dispose();
     super.dispose();
   }
 
@@ -47,6 +49,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           "name": _nameController.text.trim(),
           "email": _emailController.text.trim(),
           "phone": _phoneContoller.text.trim(),
+          "address": _addressController.text.trim(),
           "role": _selectedRole,
           "riderStatus": _selectedRole == "rider" ? "pending" : null,
           "createdAt": FieldValue.serverTimestamp(),
@@ -177,6 +180,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   validator: (value) => value!.length < 11
                       ? "Phone Number must be at least 11 characters"
                       : null,
+                ),
+                const SizedBox(height: 25),
+
+                // Address
+                TextFormField(
+                  controller: _addressController,
+                  decoration: InputDecoration(
+                    labelText: "Address",
+                    prefixIcon: Icon(Icons.home, color: Colors.blue[700]),
+                    filled: true,
+                    fillColor: Colors.blue[50],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  validator: (value) =>
+                  value!.isEmpty ? "Please enter your address" : null,
                 ),
                 const SizedBox(height: 25),
 

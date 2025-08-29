@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:friendlymart/screens/create/admin_create_product.dart';
 import 'package:friendlymart/screens/read/admin_read_product.dart';
+import 'package:friendlymart/screens/login.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
 
@@ -10,6 +12,11 @@ class AdminDashboard extends StatefulWidget {
 
 class _AdminDashboardState extends State<AdminDashboard> {
   int _selectedIndex = 0;
+  void _logout() async {
+    await FirebaseAuth.instance.signOut();
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()),
+    );
+  }
 
   late final List<Widget> _pages;
 
@@ -39,6 +46,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
         title: const Text("Friendly Mart Admin"),
         centerTitle: true,
         backgroundColor: primaryBlue,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.logout),
+            onPressed: _logout,
+            tooltip: "Logout",
+          ),
+        ],
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
