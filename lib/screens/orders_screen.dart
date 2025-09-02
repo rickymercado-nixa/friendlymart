@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-class CustomerOrdersPage extends StatelessWidget {
+class CustomerOrdersPage extends StatefulWidget {
   const CustomerOrdersPage({super.key});
+
+  @override
+  State<CustomerOrdersPage> createState() => _CustomerOrdersPageState();
+}
+
+class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
+  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -12,7 +19,13 @@ class CustomerOrdersPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("My Orders"),
+        title: Text(
+          _selectedIndex == 0
+              ? "My Active Orders"
+              : _selectedIndex == 1
+              ? "My Cancelled Orders"
+              : "My Completed Orders",
+        ),
         backgroundColor: Colors.blue[600],
         foregroundColor: Colors.white,
       ),
@@ -23,14 +36,6 @@ class CustomerOrdersPage extends StatelessWidget {
             .orderBy("createdAt", descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            print("Fetched documents: ${snapshot.data!.docs.length}");
-            print("Fetched documents: $userRef");
-            for (var doc in snapshot.data!.docs) {
-              print("Doc ID: ${doc.id}, Data: ${doc.data()}");
-            }
-          }
-
           if (snapshot.hasError) {
             return Center(child: Text("Error: ${snapshot.error}"));
           }
@@ -43,12 +48,27 @@ class CustomerOrdersPage extends StatelessWidget {
             return _buildEmptyState();
           }
 
-          print("Fetched orders: ${snapshot.data!.docs.length}");
-          for (var doc in snapshot.data!.docs) {
-            print(doc.data());
-          }
+          // filter based on selected tab
+          final allOrders = snapshot.data!.docs;
+          final orders = allOrders.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final status = data['orderStatus'] ?? "Pending";
 
-          final orders = snapshot.data!.docs;
+            if (_selectedIndex == 0) {
+              // Active orders (not cancelled or completed)
+              return status != "Cancelled" && status != "Completed";
+            } else if (_selectedIndex == 1) {
+              // Cancelled orders
+              return status == "Cancelled";
+            } else {
+              // Completed orders
+              return status == "Completed";
+            }
+          }).toList();
+
+          if (orders.isEmpty) {
+            return _buildEmptyState();
+          }
 
           return ListView.builder(
             itemCount: orders.length,
@@ -69,7 +89,14 @@ class CustomerOrdersPage extends StatelessWidget {
                 ),
                 elevation: 3,
                 child: ExpansionTile(
-                  leading: Icon(Icons.receipt, color: Colors.blue[700]),
+                  leading: Icon(
+                    Icons.receipt,
+                    color: orderStatus == "Cancelled"
+                        ? Colors.red
+                        : orderStatus == "Completed"
+                        ? Colors.green
+                        : Colors.blue[700],
+                  ),
                   title: Text("Order #${order.id.substring(0, 6)}"),
                   subtitle: Text(
                     "Status: $orderStatus • ₱$totalAmount",
@@ -96,6 +123,37 @@ class CustomerOrdersPage extends StatelessWidget {
                               trailing: Text("₱${item['price']}"),
                             );
                           }).toList(),
+                          if (_selectedIndex == 0 && createdAt != null) ...[
+                            const SizedBox(height: 8),
+                            if (DateTime.now().difference(createdAt).inMinutes < 5 &&
+                                (orderStatus == "Pending" || orderStatus == "Processing"))
+                              ElevatedButton.icon(
+                                onPressed: () async {
+                                  await FirebaseFirestore.instance
+                                      .collection("orders")
+                                      .doc(order.id)
+                                      .update({"orderStatus": "Cancelled"});
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Order cancelled successfully"),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.cancel, color: Colors.white),
+                                label: const Text("Cancel Order"),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8)),
+                                ),
+                              )
+                            else
+                              Text(
+                                "❌ Cannot cancel (time expired)",
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                          ]
                         ],
                       ),
                     )
@@ -105,6 +163,28 @@ class CustomerOrdersPage extends StatelessWidget {
             },
           );
         },
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: "Active",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.cancel),
+            label: "Cancelled",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.check_circle),
+            label: "Completed",
+          ),
+        ],
       ),
     );
   }

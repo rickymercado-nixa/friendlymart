@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:friendlymart/models/riderapproval_page.dart';
 import 'package:friendlymart/screens/create/admin_create_product.dart';
 import 'package:friendlymart/screens/read/admin_read_product.dart';
 import 'package:friendlymart/screens/login.dart';
@@ -27,6 +28,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       const DashboardAnalyticsPage(),
       ReadProductsPage(),
       CreateProductPage(),
+      RiderApprovalPage(),
     ];
   }
 
@@ -65,6 +67,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: "Dashboard"),
           BottomNavigationBarItem(icon: Icon(Icons.list), label: "Products"),
           BottomNavigationBarItem(icon: Icon(Icons.add), label: "Create"),
+          BottomNavigationBarItem(icon: Icon(Icons.motorcycle), label: "Riders"),
         ],
       ),
       /*

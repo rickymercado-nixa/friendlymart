@@ -140,43 +140,64 @@ class CartService {
     }
   }
 
-  // Checkout: move cart items into orders
   static Future<bool> checkout({
     required String paymentMethod,
-    String? deliveryLocation,
   }) async {
     final user = _auth.currentUser;
-    if (user == null) return false;
+    if (user == null) {
+      print("❌ No user logged in at checkout");
+      return false;
+    }
+
+    print("✅ Checkout started for user: ${user.uid}");
 
     final cartData = await getCartForCheckout();
-    if (cartData == null) return false;
+    if (cartData == null) {
+      print("❌ No cart data found");
+      return false;
+    }
 
     try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+
+      print("📄 User doc exists: ${userDoc.exists}");
+      print("📄 User data: ${userDoc.data()}");
+
+      String deliveryLocation = "Not provided";
+      if (userDoc.exists) {
+        final data = userDoc.data();
+        if (data != null) {
+          print("🔑 Keys in userDoc: ${data.keys}");
+          deliveryLocation = data['address'] ?? "Not provided";
+        }
+      }
+
+      print("📍 Final deliveryLocation = $deliveryLocation");
+
       final orderData = {
-        'customerId': user.uid,
+        'customerId': _firestore.collection('users').doc(user.uid),
         'items': cartData['items'],
         'totalAmount': cartData['totalAmount'],
         'paymentMethod': paymentMethod,
         'paymentStatus': 'Pending',
         'orderStatus': 'Pending',
-        'deliveryLocation': deliveryLocation ?? "Not provided",
+        'deliveryLocation': deliveryLocation,
         'deliveryFee': 0,
-        'acceptedBy': "Waiting for rider",
-        'assignBy': "System",
-        'riderId': null,
+        'acceptedBy': "",
+        'assignedBy': "System",
+        'riderId': "",
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      // Save to orders
       await _firestore.collection('orders').add(orderData);
 
-      // Clear the cart after placing order
+      print("✅ Order placed successfully!");
       await clearCart();
 
       return true;
     } catch (e) {
-      print("Error during checkout: $e");
+      print("❌ Error during checkout: $e");
       return false;
     }
   }

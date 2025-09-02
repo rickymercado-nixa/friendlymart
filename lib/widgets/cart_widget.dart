@@ -126,19 +126,17 @@ class CartDialog extends StatelessWidget {
       return;
     }
 
-    final success = await OrderService.createOrder(
-      items: cartData['items'],
-      totalAmount: cartData['totalAmount'],
-    );
+    // Use the CartService.checkout() instead of OrderService
+    final success = await CartService.checkout(paymentMethod: "Cash on Delivery");
 
     if (success) {
-      await CartService.clearCart();
       Navigator.pop(context);
       _showSnackBar(context, "Order placed successfully!", Colors.green);
     } else {
       _showSnackBar(context, "Failed to place order. Please try again.", Colors.red);
     }
   }
+
 
   void _showSnackBar(BuildContext context, String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
