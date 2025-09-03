@@ -12,6 +12,48 @@ class CartService {
     return _firestore.collection('carts').doc(user.uid);
   }
 
+  // 🔹 Save or update delivery location (from map picker)
+  static Future<void> setDeliveryLocation({
+    required double latitude,
+    required double longitude,
+    required String address,
+  }) async {
+    final cartRef = _userCartRef;
+    if (cartRef == null) return;
+
+    try {
+      await cartRef.set({
+        'deliveryLocation': {
+          'address': address,
+          'lat': latitude,
+          'lng': longitude,
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print("✅ Delivery location updated in cart (lat/lng + Address)");
+    } catch (e) {
+      print("❌ Error setting delivery location: $e");
+    }
+  }
+
+  // Get delivery location from cart
+  static Future<Map<String, dynamic>?> getDeliveryLocation() async {
+    final cartRef = _userCartRef;
+    if (cartRef == null) return null;
+
+    try {
+      final cartDoc = await cartRef.get();
+      if (!cartDoc.exists) return null;
+
+      final data = cartDoc.data() as Map<String, dynamic>;
+      return data['deliveryLocation'] as Map<String, dynamic>?;
+    } catch (e) {
+      print("❌ Error getting delivery location: $e");
+      return null;
+    }
+  }
+
   // Get cart items count
   static Future<int> getCartItemsCount() async {
     final cartRef = _userCartRef;
@@ -133,6 +175,7 @@ class CartService {
       return {
         'items': orderItems,
         'totalAmount': totalAmount,
+        'deliveryLocation': cartData?['deliveryLocation'],
       };
     } catch (e) {
       print('Error getting cart for checkout: $e');
@@ -142,14 +185,13 @@ class CartService {
 
   static Future<bool> checkout({
     required String paymentMethod,
+    required Map<String, dynamic> deliveryLocation, // 👈 added this
   }) async {
     final user = _auth.currentUser;
     if (user == null) {
       print("❌ No user logged in at checkout");
       return false;
     }
-
-    print("✅ Checkout started for user: ${user.uid}");
 
     final cartData = await getCartForCheckout();
     if (cartData == null) {
@@ -158,22 +200,6 @@ class CartService {
     }
 
     try {
-      final userDoc = await _firestore.collection('users').doc(user.uid).get();
-
-      print("📄 User doc exists: ${userDoc.exists}");
-      print("📄 User data: ${userDoc.data()}");
-
-      String deliveryLocation = "Not provided";
-      if (userDoc.exists) {
-        final data = userDoc.data();
-        if (data != null) {
-          print("🔑 Keys in userDoc: ${data.keys}");
-          deliveryLocation = data['address'] ?? "Not provided";
-        }
-      }
-
-      print("📍 Final deliveryLocation = $deliveryLocation");
-
       final orderData = {
         'customerId': _firestore.collection('users').doc(user.uid),
         'items': cartData['items'],
@@ -181,7 +207,11 @@ class CartService {
         'paymentMethod': paymentMethod,
         'paymentStatus': 'Pending',
         'orderStatus': 'Pending',
-        'deliveryLocation': deliveryLocation,
+        'deliveryLocation': {
+          "lat": deliveryLocation["lat"],
+          "lng": deliveryLocation["lng"],
+          "address": deliveryLocation["address"],
+        },
         'deliveryFee': 0,
         'acceptedBy': "",
         'assignedBy': "System",
@@ -192,9 +222,9 @@ class CartService {
 
       await _firestore.collection('orders').add(orderData);
 
-      print("✅ Order placed successfully!");
       await clearCart();
 
+      print("✅ Order placed successfully!");
       return true;
     } catch (e) {
       print("❌ Error during checkout: $e");

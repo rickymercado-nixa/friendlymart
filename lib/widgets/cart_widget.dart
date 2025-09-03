@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/cart_service.dart';
-import '../services/order_service.dart';
+import '../widgets/maplocation_picker.dart';
 
-class CartDialog extends StatelessWidget {
+class CartDialog extends StatefulWidget {
   const CartDialog({Key? key}) : super(key: key);
+
+  @override
+  State<CartDialog> createState() => _CartDialogState();
+}
+
+class _CartDialogState extends State<CartDialog> {
+  String? _selectedPayment; // no default, wait for Firestore
 
   @override
   Widget build(BuildContext context) {
@@ -13,7 +20,7 @@ class CartDialog extends StatelessWidget {
       title: Row(
         children: [
           Icon(Icons.shopping_cart, color: Colors.blue[600]),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           Text(
             "Your Cart",
             style: TextStyle(color: Colors.blue[700], fontWeight: FontWeight.w600),
@@ -22,12 +29,12 @@ class CartDialog extends StatelessWidget {
       ),
       content: SizedBox(
         width: double.maxFinite,
-        height: 400,
+        height: 450,
         child: StreamBuilder<DocumentSnapshot>(
           stream: CartService.getCartStream(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (!snapshot.hasData || !snapshot.data!.exists) {
@@ -60,14 +67,66 @@ class CartDialog extends StatelessWidget {
                     }).toList(),
                   ),
                 ),
-                Divider(),
+                const Divider(),
+
+// 💳 Payment selection (REAL-TIME from Firestore)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "Select Payment Method:",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue[800],
+                    ),
+                  ),
+                ),
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection("payments")
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return const Text("No payment methods available");
+                    }
+
+                    final methods = snapshot.data!.docs;
+
+                    // set default if not selected yet
+                    if (_selectedPayment == null && methods.isNotEmpty) {
+                      _selectedPayment = methods.first['method']; // ✅ FIXED
+                    }
+
+                    return Column(
+                      children: methods.map((doc) {
+                        final methodName = doc['method']; // ✅ FIXED
+
+                        return RadioListTile<String>(
+                          value: methodName,
+                          groupValue: _selectedPayment,
+                          onChanged: (val) {
+                            setState(() {
+                              _selectedPayment = val!;
+                            });
+                          },
+                          title: Text(methodName),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+
+
+                const Divider(),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      "Total:",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+                    const Text("Total:",
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
                     Text(
                       "₱${total.toStringAsFixed(2)}",
                       style: TextStyle(
@@ -95,7 +154,7 @@ class CartDialog extends StatelessWidget {
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-          child: Text("Checkout"),
+          child: const Text("Checkout"),
         ),
       ],
     );
@@ -107,7 +166,7 @@ class CartDialog extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.shopping_cart_outlined, size: 64, color: Colors.grey[400]),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Text("Your cart is empty", style: TextStyle(color: Colors.grey[600])),
         ],
       ),
@@ -120,14 +179,37 @@ class CartDialog extends StatelessWidget {
 
   Future<void> _checkout(BuildContext context) async {
     final cartData = await CartService.getCartForCheckout();
-
     if (cartData == null) {
       _showSnackBar(context, "Cart is empty!", Colors.orange);
       return;
     }
 
-    // Use the CartService.checkout() instead of OrderService
-    final success = await CartService.checkout(paymentMethod: "Cash on Delivery");
+    if (_selectedPayment == null) {
+      _showSnackBar(context, "Please select a payment method!", Colors.red);
+      return;
+    }
+
+    // ✅ get saved location from CartService (Firestore)
+    final savedLocation = await CartService.getDeliveryLocation();
+
+    // Open map picker with saved Firestore address or fallback
+    final selectedLocation = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MapLocationPicker(
+          initialAddress: savedLocation?["address"] ?? "",
+          initialLat: savedLocation?["lat"],
+          initialLng: savedLocation?["lng"],
+        ),
+      ),
+    );
+
+    if (selectedLocation == null) return;
+
+    final success = await CartService.checkout(
+      paymentMethod: _selectedPayment!,
+      deliveryLocation: selectedLocation,
+    );
 
     if (success) {
       Navigator.pop(context);
@@ -232,7 +314,7 @@ class CartBadge extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(),
                     blurRadius: 4,
                     offset: Offset(0, 2),
                   ),
