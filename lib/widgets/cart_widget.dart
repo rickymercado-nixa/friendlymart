@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/cart_service.dart';
-import '../widgets/maplocation_picker.dart';
+import '../widgets/maplocator_picker.dart';
 
 class CartDialog extends StatefulWidget {
   const CartDialog({Key? key}) : super(key: key);

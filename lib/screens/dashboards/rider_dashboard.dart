@@ -1,214 +1,228 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import '../../chats/chat_screen.dart';
 import '../login.dart';
+import '../../chats/rider_chats.dart';
 import 'package:friendlymart/services/rider_service.dart';
 
-class RiderDashboard extends StatelessWidget {
-  RiderDashboard({super.key});
+class RiderDashboard extends StatefulWidget {
+  const RiderDashboard({super.key});
 
+  @override
+  State<RiderDashboard> createState() => _RiderDashboardState();
+}
+
+class _RiderDashboardState extends State<RiderDashboard> {
   final RiderService _riderService = RiderService();
+  int _selectedIndex = 0;
 
   void _logout(BuildContext context) async {
     await _riderService.logout();
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => LoginScreen()),
     );
   }
 
-  /// Fetch all users referenced in these orders and map them
-  Future<Map<String, dynamic>> _fetchUsersForOrders(
-      List<QueryDocumentSnapshot> orders) async {
-    // Collect all user document IDs from customerId references
-    final userIds = orders
-        .map((o) => (o['customerId'] as DocumentReference).id)
-        .toSet()
-        .toList();
+  // statuses list
+  final List<String> _statuses = [
+    "Pending",
+    "Accepted",
+    "Rejected",
+    "Delivered"
+  ];
 
-    if (userIds.isEmpty) return {};
+  Widget _buildOrdersList(String status) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection("orders")
+          .where("orderStatus", isEqualTo: status)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    // Fetch all users with a single query
-    final usersSnap = await FirebaseFirestore.instance
-        .collection("users")
-        .where(FieldPath.documentId, whereIn: userIds)
-        .get();
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Text(
+              "No $status orders",
+              style: const TextStyle(
+                fontSize: 16,
+                color: Colors.black54,
+              ),
+            ),
+          );
+        }
 
-    return {for (var u in usersSnap.docs) u.id: u.data()};
+        final orders = snapshot.data!.docs;
+
+        return ListView.builder(
+          itemCount: orders.length,
+          itemBuilder: (context, index) {
+            final doc = orders[index];
+            final data = doc.data() as Map<String, dynamic>;
+
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListTile(
+                title: Text(
+                  "Order ID: ${doc.id}",
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text("Total: ₱${data['totalAmount'] ?? '0.00'}"),
+                trailing: status == "Pending"
+                    ? ElevatedButton(
+                  onPressed: () async {
+                    final riderUid =
+                        FirebaseAuth.instance.currentUser!.uid;
+
+                    // Accept order
+                    await FirebaseFirestore.instance
+                        .collection("orders")
+                        .doc(doc.id)
+                        .update({
+                      "riderId": riderUid,
+                      "orderStatus": "Accepted",
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.yellow[700],
+                    foregroundColor: Colors.blue[900],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text("Accept"),
+                )
+                    : null,
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Rider Dashboard"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => _logout(context),
-            tooltip: "Logout",
+    return Theme(
+      data: ThemeData(
+        primaryColor: Colors.blue[800],
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.blue[800],
+          foregroundColor: Colors.yellow[600],
+          titleTextStyle: TextStyle(
+            color: Colors.yellow[600],
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
           ),
-        ],
+          iconTheme: IconThemeData(color: Colors.yellow[600]),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.yellow[700],
+            foregroundColor: Colors.blue[900],
+          ),
+        ),
       ),
-      body: FutureBuilder<String?>(
-        future: _riderService.getRiderStatus(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (!snapshot.hasData) {
-            return const Center(child: Text("Unable to load rider status."));
-          }
-
-          final status = snapshot.data;
-
-          if (status == "approved") {
-            return StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection("orders")
-                  .where("orderStatus", isEqualTo: "Pending")
-                  .snapshots(),
-              builder: (context, orderSnapshot) {
-                if (orderSnapshot.connectionState ==
-                    ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (!orderSnapshot.hasData ||
-                    orderSnapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text("No new orders right now."));
-                }
-
-                final orders = orderSnapshot.data!.docs;
-
-                return FutureBuilder<Map<String, dynamic>>(
-                  future: _fetchUsersForOrders(orders),
-                  builder: (context, userSnapshot) {
-                    if (userSnapshot.connectionState ==
-                        ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    final userMap = userSnapshot.data ?? {};
-
-                    return ListView.builder(
-                      itemCount: orders.length,
-                      itemBuilder: (context, index) {
-                        final doc = orders[index];
-                        final data = doc.data() as Map<String, dynamic>;
-
-                        // customerId is a DocumentReference
-                        final DocumentReference customerRef =
-                        data["customerId"];
-                        final customerData = userMap[customerRef.id] ?? {};
-                        final customerName =
-                            customerData['name'] ?? "Unknown";
-                        final customerPhone =
-                            customerData['phone'] ?? "N/A";
-
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          child: ExpansionTile(
-                            title: Text(
-                              "Deliver to: ${data['deliveryLocation'] ?? 'No location'}",
-                              style:
-                              const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: Text("Order ID: ${doc.id}"),
-                            childrenPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            children: [
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text("Customer: $customerName"),
-                                    Text("Phone: $customerPhone"),
-                                    Text(
-                                        "Total: \₱${data['totalAmount'] ?? '0.00'}"),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        ElevatedButton(
-                                          onPressed: () async {
-                                            final riderUid = FirebaseAuth
-                                                .instance.currentUser!.uid;
-                                            await FirebaseFirestore.instance
-                                                .collection("orders")
-                                                .doc(doc.id)
-                                                .update({
-                                              "riderId": riderUid,
-                                              "orderStatus": "Accepted",
-                                            });
-                                          },
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.green,
-                                          ),
-                                          child: const Text("Accept"),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        ElevatedButton(
-                                          onPressed: () async {
-                                            await FirebaseFirestore.instance
-                                                .collection("orders")
-                                                .doc(doc.id)
-                                                .update({
-                                              "riderId": null,
-                                              "orderStatus": "Rejected",
-                                            });
-                                          },
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.red,
-                                          ),
-                                          child: const Text("Reject"),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              )
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Rider Dashboard"),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.chat),
+              tooltip: "Chats",
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const RiderChatsScreen()),
                 );
               },
-            );
-          } else if (status == "pending") {
-            return const Center(
-              child: Text(
-                "Your application as a rider is under review.\nPlease wait for store approval.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.orange,
-                  fontWeight: FontWeight.w500,
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: "Logout",
+              onPressed: () => _logout(context),
+            ),
+          ],
+        ),
+        body: FutureBuilder<String?>(
+          future: _riderService.getRiderStatus(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (!snapshot.hasData) {
+              return const Center(child: Text("Unable to load rider status."));
+            }
+
+            final status = snapshot.data;
+
+            if (status == "approved") {
+              return _buildOrdersList(_statuses[_selectedIndex]);
+            } else if (status == "pending") {
+              return Center(
+                child: Text(
+                  "Your application is under review.\nPlease wait for approval.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.orange[800],
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-            );
-          } else if (status == "rejected") {
-            return const Center(
-              child: Text(
-                "Your rider application has been rejected.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.red,
-                  fontWeight: FontWeight.w500,
+              );
+            } else if (status == "rejected") {
+              return Center(
+                child: Text(
+                  "Your rider application has been rejected.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.red[700],
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-            );
-          } else {
-            return const Center(child: Text("Unknown status."));
-          }
-        },
+              );
+            } else {
+              return const Center(child: Text("Unknown status."));
+            }
+          },
+        ),
+        bottomNavigationBar: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Colors.blue[800],
+          selectedItemColor: Colors.yellow[600],
+          unselectedItemColor: Colors.yellow[400],
+          currentIndex: _selectedIndex,
+          onTap: (index) => setState(() => _selectedIndex = index),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.pending_actions),
+              label: "Pending",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.check_circle),
+              label: "Accepted",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.cancel),
+              label: "Rejected",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.local_shipping),
+              label: "Delivered",
+            ),
+          ],
+        ),
       ),
     );
   }

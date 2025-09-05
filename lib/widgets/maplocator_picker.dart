@@ -26,7 +26,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   String _currentAddress = '';
   bool _mapControllerReady = false;
 
-  static const String _apiKey = "AIzaSyDoSxqKA7hgnHbyRwbQGpACBEvn2OtcOr4"; // API key
+  // ✅ Replace with your OpenCage API key
+  static const String _apiKey = "dc4945bc771f4780bc040ec0f7708044";
 
   @override
   void initState() {
@@ -43,7 +44,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
     if (widget.initialLat != null && widget.initialLng != null) {
       latLng = LatLng(widget.initialLat!, widget.initialLng!);
       _currentAddress = widget.initialAddress;
-      debugPrint("Using provided coordinates: ${latLng.latitude}, ${latLng.longitude}");
     }
     // Priority 2: Parse if address is "lat,lng"
     else if (widget.initialAddress.contains(",") &&
@@ -54,18 +54,14 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (lat != null && lng != null) {
         latLng = LatLng(lat, lng);
         _currentAddress = await _getAddressFromLatLng(lat, lng);
-        debugPrint("Parsed coordinates from address: $lat, $lng");
       }
     }
     // Priority 3: Forward geocode text address
     else if (widget.initialAddress.isNotEmpty) {
-      debugPrint("Attempting to geocode address: ${widget.initialAddress}");
       latLng = await _getLatLngFromAddress(widget.initialAddress);
       if (latLng != null) {
         _currentAddress = widget.initialAddress;
-        debugPrint("Geocoded to: ${latLng.latitude}, ${latLng.longitude}");
       } else {
-        debugPrint("Geocoding failed, using default location");
         latLng = const LatLng(6.2303, 125.0829);
         _currentAddress = "Polomolok, South Cotabato";
       }
@@ -76,8 +72,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         _selectedLatLng = latLng!;
         _isLoading = false;
       });
-
-      // Move camera after map controller is ready
       _moveCameraWhenReady(latLng);
     } else {
       setState(() => _isLoading = false);
@@ -85,7 +79,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   }
 
   Future<void> _moveCameraWhenReady(LatLng target) async {
-    // Wait for map controller to be ready
     while (!_mapControllerReady) {
       await Future.delayed(const Duration(milliseconds: 100));
     }
@@ -109,131 +102,82 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
     return false;
   }
 
-  /// Enhanced Forward Geocoding with region bias and component filtering
+  /// ✅ Forward Geocoding with OpenCage
   Future<LatLng?> _getLatLngFromAddress(String address) async {
-    // Multiple search strategies for better Philippines results
-    List<String> searchQueries = [
-      address,
-      "$address, Philippines",
-      "$address, South Cotabato, Philippines",
-    ];
-
-    for (String query in searchQueries) {
-      final url = "https://maps.googleapis.com/maps/api/geocode/json?"
-          "address=${Uri.encodeComponent(query)}&"
-          "region=ph&"  // Bias results towards Philippines
-          "components=country:PH&"  // Restrict to Philippines only
-          "key=$_apiKey";
-
-      try {
-        final response = await http.get(Uri.parse(url));
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-            final location = data['results'][0]['geometry']['location'];
-            debugPrint("Geocoding success for '$query': ${location['lat']}, ${location['lng']}");
-            return LatLng(location['lat'], location['lng']);
-          } else {
-            debugPrint("Geocoding failed for '$query': ${data['status']}");
-          }
-        }
-      } catch (e) {
-        debugPrint("Forward geocoding error for '$query': $e");
-      }
-
-      // Small delay between requests
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
-
-    return null;
-  }
-
-  /// Enhanced Reverse Geocoding with detailed address components
-  Future<String> _getAddressFromLatLng(double lat, double lng) async {
-    final url = "https://maps.googleapis.com/maps/api/geocode/json?"
-        "latlng=$lat,$lng&"
-        "result_type=street_address|subpremise|premise|neighborhood|sublocality|locality&"  // Get detailed results
-        "key=$_apiKey";
+    final url =
+        "https://api.opencagedata.com/geocode/v1/json?q=${Uri.encodeComponent(address)}&key=$_apiKey&countrycode=ph";
 
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {"User-Agent": "maplocation-picker-app"},
+      );
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-
-          // Try to find the most detailed address first
-          String? bestAddress = _findBestAddress(data['results']);
-          if (bestAddress != null) {
-            return bestAddress;
-          }
-          debugPrint("Reverse geocoding failed: ${data['status']} | error: ${data['error_message']}");
-
-          // Fallback to formatted_address of first result
-          return data['results'][0]['formatted_address'];
-        } else {
-          debugPrint("Reverse geocoding failed: ${data['status']}");
+        if (data['results'].isNotEmpty) {
+          final location = data['results'][0]['geometry'];
+          return LatLng(location['lat'], location['lng']);
         }
       }
     } catch (e) {
-      debugPrint("Reverse geocoding error: $e");
+      debugPrint("OpenCage forward geocoding error: $e");
     }
-    return "$lat, $lng"; // fallback
-  }
-
-  /// Find the most detailed address from multiple results
-  String? _findBestAddress(List<dynamic> results) {
-    // Prioritize results with more specific location types
-    final priorityTypes = [
-      'street_address',
-      'subpremise',
-      'premise',
-      'neighborhood',
-      'sublocality',
-    ];
-
-    for (String priorityType in priorityTypes) {
-      for (var result in results) {
-        List<dynamic> types = result['types'] ?? [];
-        if (types.contains(priorityType)) {
-          return result['formatted_address'];
-        }
-      }
-    }
-
     return null;
   }
 
-  /// Get current location details with enhanced address parsing
+  /// ✅ Reverse Geocoding with OpenCage
+  Future<String> _getAddressFromLatLng(double lat, double lng) async {
+    final url =
+        "https://api.opencagedata.com/geocode/v1/json?q=$lat,$lng&key=$_apiKey";
+
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {"User-Agent": "maplocation-picker-app"},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['results'] != null && data['results'].isNotEmpty) {
+          final formatted = data['results'][0]['formatted'];
+          debugPrint("✅ Reverse geocode result: $formatted");
+          return formatted; // ✅ return human-readable address
+        } else {
+          debugPrint("⚠️ No results from OpenCage for $lat,$lng");
+        }
+      } else {
+        debugPrint("❌ OpenCage API error: ${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("❌ OpenCage reverse geocoding exception: $e");
+    }
+
+    return "$lat, $lng"; // fallback only if API fails
+  }
+
+
+  /// ✅ Get detailed location info with OpenCage
   Future<Map<String, dynamic>> _getCurrentLocationDetails() async {
     final lat = _selectedLatLng.latitude;
     final lng = _selectedLatLng.longitude;
 
-    final url = "https://maps.googleapis.com/maps/api/geocode/json?"
-        "latlng=$lat,$lng&"
-        "key=$_apiKey";
+    final url =
+        "https://api.opencagedata.com/geocode/v1/json?q=$lat,$lng&key=$_apiKey";
 
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {"User-Agent": "maplocation-picker-app"},
+      );
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-
-          // Get the most detailed result
-          var bestResult = data['results'][0];
-
-          // Try to find street address result if available
-          for (var result in data['results']) {
-            List<dynamic> types = result['types'] ?? [];
-            if (types.contains('street_address')) {
-              bestResult = result;
-              break;
-            }
-          }
-
+        if (data['results'].isNotEmpty) {
+          var result = data['results'][0];
           return {
-            'formatted_address': bestResult['formatted_address'],
-            'address_components': bestResult['address_components'],
-            'geometry': bestResult['geometry'],
+            'formatted_address': result['formatted'],
+            'components': result['components'],
+            'geometry': result['geometry'],
           };
         }
       }
@@ -243,9 +187,10 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
     return {
       'formatted_address': "$lat, $lng",
-      'address_components': [],
+      'components': {},
       'geometry': {
-        'location': {'lat': lat, 'lng': lng}
+        'lat': lat,
+        'lng': lng,
       },
     };
   }
@@ -258,7 +203,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
-          // Add a search button for manual address input
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: _showAddressSearchDialog,
@@ -275,7 +219,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
             onMapCreated: (controller) {
               _mapController = controller;
               _mapControllerReady = true;
-              debugPrint("Map controller ready");
             },
             markers: {
               Marker(
@@ -289,40 +232,40 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                   });
 
                   _currentAddress = await _getAddressFromLatLng(
-                      newPosition.latitude,
-                      newPosition.longitude
+                    newPosition.latitude,
+                    newPosition.longitude,
                   );
 
                   setState(() => _isLoading = false);
                 },
               ),
             },
-            onTap: (point) async {
+            onTap: (LatLng tappedPoint) async {
               setState(() {
-                _selectedLatLng = point;
+                _selectedLatLng = tappedPoint;  // fixed: you had _selectedLocation
                 _isLoading = true;
               });
 
-              _currentAddress = await _getAddressFromLatLng(
-                  point.latitude,
-                  point.longitude
+              final address = await _getAddressFromLatLng(
+                tappedPoint.latitude,
+                tappedPoint.longitude,
               );
 
-              setState(() => _isLoading = false);
+              setState(() {
+                _currentAddress = address; // ✅ show formatted address
+                _isLoading = false;
+              });
             },
             myLocationEnabled: true,
             myLocationButtonEnabled: true,
             mapType: MapType.normal,
             zoomControlsEnabled: true,
           ),
-
           if (_isLoading)
             Container(
               color: Colors.black26,
               child: const Center(child: CircularProgressIndicator()),
             ),
-
-          // Enhanced address display
           Positioned(
             top: 10,
             left: 10,
@@ -345,10 +288,10 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
-                    children: [
-                      const Icon(Icons.location_on, size: 16, color: Colors.red),
-                      const SizedBox(width: 4),
-                      const Text(
+                    children: const [
+                      Icon(Icons.location_on, size: 16, color: Colors.red),
+                      SizedBox(width: 4),
+                      Text(
                         "Selected Location:",
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                       ),
@@ -379,14 +322,13 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         onPressed: _isLoading
             ? null
             : () async {
-          // Get the most detailed location information before confirming
           final locationDetails = await _getCurrentLocationDetails();
 
           Navigator.pop(context, {
             "lat": _selectedLatLng.latitude,
             "lng": _selectedLatLng.longitude,
             "address": locationDetails['formatted_address'],
-            "address_components": locationDetails['address_components'],
+            "address_components": locationDetails['components'],
           });
         },
         backgroundColor: Colors.green,
