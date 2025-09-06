@@ -3,10 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class ChatScreen extends StatefulWidget {
-  final String chatId;       // Firestore chat doc ID
-  final String orderId;      // Related order
-  final String customerName; // For display
-  final String riderName;    // For display
+  final String chatId;
+  final String orderId;
+  final String customerName;
+  final String riderName;
 
   const ChatScreen({
     super.key,
@@ -31,17 +31,34 @@ class _ChatScreenState extends State<ChatScreen> {
       "senderId": user!.uid,
       "text": _msgController.text.trim(),
       "image": "",
-      "read": false,
+      "status": "sending",
       "timestamp": FieldValue.serverTimestamp(),
     };
 
-    await FirebaseFirestore.instance
+    final ref = await FirebaseFirestore.instance
         .collection("chats")
         .doc(widget.chatId)
         .collection("messages")
         .add(message);
 
+    // update to sent
+    await ref.update({"status": "sent"});
+
     _msgController.clear();
+  }
+
+  void _markMessagesAsSeen() {
+    FirebaseFirestore.instance
+        .collection("chats")
+        .doc(widget.chatId)
+        .collection("messages")
+        .where("senderId", isNotEqualTo: user!.uid)
+        .get()
+        .then((snapshot) {
+      for (var doc in snapshot.docs) {
+        doc.reference.update({"status": "seen"});
+      }
+    });
   }
 
   @override
@@ -67,6 +84,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 final messages = snapshot.data!.docs;
 
+                _markMessagesAsSeen();
+
                 return ListView.builder(
                   reverse: true,
                   itemCount: messages.length,
@@ -76,20 +95,39 @@ class _ChatScreenState extends State<ChatScreen> {
                     final isMe = msg["senderId"] == user!.uid;
 
                     return Align(
-                      alignment:
-                      isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(
-                            vertical: 4, horizontal: 8),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isMe ? Colors.green[300] : Colors.grey[300],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          msg["text"] ?? "",
-                          style: const TextStyle(fontSize: 16),
-                        ),
+                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Column(
+                        crossAxisAlignment:
+                        isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isMe ? Colors.green[300] : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              msg["text"] ?? "",
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                          ),
+                          if (isMe) // show status only for my messages
+                            Padding(
+                              padding: const EdgeInsets.only(right: 12, top: 2),
+                              child: Icon(
+                                msg["status"] == "sending"
+                                    ? Icons.access_time
+                                    : msg["status"] == "sent"
+                                    ? Icons.done
+                                    : Icons.done_all,
+                                size: 16,
+                                color: msg["status"] == "seen"
+                                    ? Colors.yellow
+                                    : Colors.grey,
+                              ),
+                            ),
+                        ],
                       ),
                     );
                   },

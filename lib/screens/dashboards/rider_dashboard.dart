@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../chats/chat_screen.dart';
+import 'package:friendlymart/screens/ontheway_screen.dart';
 import '../login.dart';
 import '../../chats/rider_chats.dart';
 import 'package:friendlymart/services/rider_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
 
 class RiderDashboard extends StatefulWidget {
   const RiderDashboard({super.key});
@@ -26,20 +28,25 @@ class _RiderDashboardState extends State<RiderDashboard> {
     );
   }
 
-  // statuses list
   final List<String> _statuses = [
     "Pending",
     "Accepted",
-    "Rejected",
+    "PickedUp",
+    "OnTheWay",
     "Delivered"
   ];
 
   Widget _buildOrdersList(String status) {
+    Query query = FirebaseFirestore.instance
+        .collection("orders")
+        .where("orderStatus", isEqualTo: status);
+
+    if (status != "Pending") {
+      query = query.where("riderId", isEqualTo: FirebaseAuth.instance.currentUser!.uid);
+    }
+
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection("orders")
-          .where("orderStatus", isEqualTo: status)
-          .snapshots(),
+      stream: query.snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -77,31 +84,84 @@ class _RiderDashboardState extends State<RiderDashboard> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text("Total: ₱${data['totalAmount'] ?? '0.00'}"),
-                trailing: status == "Pending"
-                    ? ElevatedButton(
-                  onPressed: () async {
-                    final riderUid =
-                        FirebaseAuth.instance.currentUser!.uid;
+                trailing: () {
+                  final riderUid = FirebaseAuth.instance.currentUser!.uid;
 
-                    // Accept order
-                    await FirebaseFirestore.instance
-                        .collection("orders")
-                        .doc(doc.id)
-                        .update({
-                      "riderId": riderUid,
-                      "orderStatus": "Accepted",
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.yellow[700],
-                    foregroundColor: Colors.blue[900],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: const Text("Accept"),
-                )
-                    : null,
+                  if (status == "Pending") {
+                    return ElevatedButton(
+                      onPressed: () async {
+                        await FirebaseFirestore.instance
+                            .collection("orders")
+                            .doc(doc.id)
+                            .update({
+                          "riderId": riderUid,
+                          "orderStatus": "Accepted",
+                        });
+                      },
+                      child: const Text("Accept"),
+                    );
+                  } else if (status == "Accepted") {
+                    return ElevatedButton(
+                      onPressed: () async {
+                        await FirebaseFirestore.instance
+                            .collection("orders")
+                            .doc(doc.id)
+                            .update({
+                          "orderStatus": "PickedUp",
+                        });
+
+                        await FirebaseFirestore.instance.collection(
+                            "notifications").add({
+                          "orderId": doc.id,
+                          "type": "PickedUp",
+                          "message": "Your order has been picked up by the rider",
+                          "timestamp": FieldValue.serverTimestamp(),
+                          "customerId": data['customerId'],
+                        });
+                      },
+                      child: const Text("Picked Up"),
+                    );
+                  } else if (status == "PickedUp") {
+                    return ElevatedButton(
+                      onPressed: () async {
+                        final deliveryLoc = data["deliveryLocation"];
+                        final riderUid = FirebaseAuth.instance.currentUser!.uid;
+
+                        if (deliveryLoc != null && deliveryLoc['lat'] != null && deliveryLoc['lng'] != null) {
+                          final customerGeo = LatLng(
+                            (deliveryLoc['lat'] as num).toDouble(),
+                            (deliveryLoc['lng'] as num).toDouble(),
+                          );
+
+                          // Navigate to the map first
+                          if (context.mounted) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DeliveryNavigationScreen(
+                                  customerLocation: customerGeo,
+                                  address: deliveryLoc['address'] ?? "Customer Address",
+                                  riderId: riderUid,
+                                ),
+                              ),
+                            );
+                          }
+
+                          // Then update Firestore to "OnTheWay"
+                          await FirebaseFirestore.instance
+                              .collection("orders")
+                              .doc(doc.id)
+                              .update({
+                            "orderStatus": "OnTheWay",
+                          });
+                        }
+                      },
+                      child: const Text("On The Way"),
+                    );
+                  } else {
+                    return null;
+                  }
+                }(),
               ),
             );
           },
@@ -214,13 +274,23 @@ class _RiderDashboardState extends State<RiderDashboard> {
               label: "Accepted",
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.cancel),
-              label: "Rejected",
+                icon: Icon(Icons.inventory),
+                label: "PickedUp"
+            ),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.directions_bike),
+                label: "OnTheWay"
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.local_shipping),
               label: "Delivered",
             ),
+            /*
+            BottomNavigationBarItem(
+              icon: Icon(Icons.cancel),
+              label: "Rejected",
+            ),
+      */
           ],
         ),
       ),

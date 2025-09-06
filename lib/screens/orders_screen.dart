@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'orders_tracking_screen.dart';
+
 class CustomerOrdersPage extends StatefulWidget {
   const CustomerOrdersPage({super.key});
 
@@ -153,7 +155,26 @@ class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
                                 "❌ Cannot cancel (time expired)",
                                 style: TextStyle(color: Colors.grey[600]),
                               ),
-                          ]
+                          ],
+                          if(_selectedIndex == 0)
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => OrderTrackingScreen(orderId: order.id),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.location_on),
+                            label: const Text("Track Order"),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     )

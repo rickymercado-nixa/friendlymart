@@ -7,6 +7,7 @@ import '../../services/product_service.dart';
 import '../../widgets/cart_widget.dart';
 import '../../widgets/product_widgets.dart';
 import 'package:friendlymart/screens/orders_screen.dart';
+import 'package:friendlymart/chats/customer_chats.dart';
 
 class CustomerDashboardPage extends StatefulWidget {
   @override
@@ -75,7 +76,17 @@ class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
             );
           },
         ),
-        // Real-time cart badge using StreamBuilder
+        IconButton(
+          icon: Icon(Icons.chat),
+          tooltip: "Messages",
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CustomerChatsScreen()),
+            );
+          },
+        ),
+        // Real-time cart badge
         StreamBuilder<DocumentSnapshot>(
           stream: CartService.getCartStream(),
           builder: (context, snapshot) {
