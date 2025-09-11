@@ -35,14 +35,41 @@ class _ProductCardState extends State<ProductCard> {
   }
 
   Future<void> addToCart() async {
-    final success = await CartService.addItemToCart(
-      productId: widget.product.id,
-      productName: widget.product['name'],
-      price: widget.product['price'].toDouble(),
-      quantity: quantity,
-    );
+    final productRef = widget.product.reference;
 
-    if (success) {
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        // Get the latest snapshot of the product
+        final freshSnap = await transaction.get(productRef);
+
+        if (!freshSnap.exists) {
+          throw Exception("Product no longer exists");
+        }
+
+        final currentStock = freshSnap['stock'] as int;
+
+        if (currentStock < quantity) {
+          throw Exception("Not enough stock available");
+        }
+
+        // Update cart first
+        final success = await CartService.addItemToCart(
+          productId: widget.product.id,
+          productName: widget.product['name'],
+          price: widget.product['price'].toDouble(),
+          quantity: quantity,
+        );
+
+        if (!success) {
+          throw Exception("Failed to add item to cart");
+        }
+
+        // Decrease stock in Firestore
+        transaction.update(productRef, {
+          'stock': currentStock - quantity,
+        });
+      });
+
       // Reset quantity after adding to cart
       setState(() {
         quantity = 1;
@@ -56,10 +83,10 @@ class _ProductCardState extends State<ProductCard> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
-    } else {
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Failed to add item to cart"),
+          content: Text(e.toString()),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -67,6 +94,7 @@ class _ProductCardState extends State<ProductCard> {
       );
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

@@ -12,7 +12,7 @@ class CartService {
     return _firestore.collection('carts').doc(user.uid);
   }
 
-  // 🔹 Save or update delivery location (from map picker)
+  // Delivery location from map picker
   static Future<void> setDeliveryLocation({
     required double latitude,
     required double longitude,
@@ -106,22 +106,46 @@ class CartService {
     }
   }
 
-  // Remove item from cart
+// Remove item from cart and restore stock
   static Future<bool> removeItemFromCart(String productId) async {
     final cartRef = _userCartRef;
     if (cartRef == null) return false;
 
     try {
-      await cartRef.update({
-        'items.$productId': FieldValue.delete(),
-        'updatedAt': FieldValue.serverTimestamp(),
+      final cartDoc = await cartRef.get();
+      if (!cartDoc.exists) return false;
+
+      final cartData = cartDoc.data() as Map<String, dynamic>?;
+      final items = cartData?['items'] as Map<String, dynamic>? ?? {};
+      if (!items.containsKey(productId)) return false;
+
+      final removedItem = items[productId];
+      final removedQty = removedItem['qty'] as int;
+
+      final productRef = FirebaseFirestore.instance.collection('products').doc(productId);
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final productSnap = await transaction.get(productRef);
+        if (!productSnap.exists) throw Exception("Product not found");
+
+        final currentStock = productSnap['stock'] as int;
+        final newStock = currentStock + removedQty;
+
+        transaction.update(productRef, {'stock': newStock});
+
+        transaction.update(cartRef, {
+          'items.$productId': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       });
+
       return true;
     } catch (e) {
       print('Error removing item from cart: $e');
       return false;
     }
   }
+
 
   // Get cart stream for real-time updates
   static Stream<DocumentSnapshot>? getCartStream() {

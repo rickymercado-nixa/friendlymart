@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 
 class OrderTrackingScreen extends StatefulWidget {
   final String orderId;
@@ -12,6 +14,8 @@ class OrderTrackingScreen extends StatefulWidget {
   State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
 }
 
+String _etaText = "";
+
 class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   GoogleMapController? _mapController;
   LatLng? _riderLocation;
@@ -19,11 +23,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   String _orderStatus = "Loading...";
   String? _riderId;
 
-  // Store location
   final LatLng storeLocation = LatLng(6.220447249809727, 125.0647953991407);
 
   StreamSubscription<DocumentSnapshot>? _orderSubscription;
   StreamSubscription<DocumentSnapshot>? _riderSubscription;
+
+  Set<Polyline> polylines = {};
 
   @override
   void initState() {
@@ -44,7 +49,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       setState(() {
         _orderStatus = data['orderStatus'] ?? "Unknown";
 
-        // Delivery location
         if (data['deliveryLocation'] != null &&
             data['deliveryLocation']['lat'] != null &&
             data['deliveryLocation']['lng'] != null) {
@@ -54,13 +58,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           );
         }
 
-        // Get riderId and start listening to rider location
         if (_riderId == null && data['riderId'] != null) {
           _riderId = data['riderId'];
           _listenToRiderLocation(_riderId!);
         }
 
-        // Optional: handle delivered order
         if (_orderStatus == "Delivered") {
           _orderSubscription?.cancel();
           _riderSubscription?.cancel();
@@ -77,23 +79,67 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         .collection("users")
         .doc(riderId)
         .snapshots()
-        .listen((doc) {
+        .listen((doc) async {
       if (!doc.exists) return;
       final data = doc.data();
       if (data == null || data['currentLocation'] == null) return;
 
       final GeoPoint loc = data['currentLocation'];
+      LatLng newRiderLocation = LatLng(loc.latitude, loc.longitude);
+
       setState(() {
-        _riderLocation = LatLng(loc.latitude, loc.longitude);
+        _riderLocation = newRiderLocation;
       });
 
-      // Animate camera to follow rider
-      if (_mapController != null) {
+      if (_deliveryLocation != null) {
+        await _fetchRoute(_riderLocation!, _deliveryLocation!);
+      }
+
+      if (_mapController != null && _riderLocation != null) {
         _mapController!.animateCamera(
           CameraUpdate.newLatLng(_riderLocation!),
         );
       }
     });
+  }
+
+  Future<void> _fetchRoute(LatLng start, LatLng end) async {
+    final url =
+        "https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson";
+
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+
+      if (data['routes'].isNotEmpty) {
+        final route = data['routes'][0];
+        final coords = data['routes'][0]['geometry']['coordinates'] as List;
+        final List<LatLng> polyPoints = coords
+            .map((c) => LatLng(c[1].toDouble(), c[0].toDouble()))
+            .toList();
+
+        // distance & duration
+        final double distanceMeters = (route['distance'] as num).toDouble();
+        final double durationSeconds = (route['duration'] as num).toDouble();
+
+        // Convert to readable format
+        final km = (distanceMeters / 1000).toStringAsFixed(2);
+        final minutes = (durationSeconds / 60).round();
+
+        setState(() {
+          polylines = {
+            Polyline(
+              polylineId: const PolylineId("rider_to_delivery"),
+              points: polyPoints,
+              color: Colors.orange,
+              width: 5,
+            ),
+          };
+          _etaText = "ETA: $minutes min • $km km";
+        });
+      }
+    }
   }
 
   @override
@@ -129,18 +175,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         ),
     };
 
-    Set<Polyline> polylines = {};
-    if (_riderLocation != null && _deliveryLocation != null) {
-      polylines.add(
-        Polyline(
-          polylineId: const PolylineId("route"),
-          points: [storeLocation, _riderLocation!, _deliveryLocation!],
-          color: Colors.orange,
-          width: 5,
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(title: const Text("Order Tracking")),
       body: Column(
@@ -149,9 +183,19 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             padding: const EdgeInsets.all(12),
             width: double.infinity,
             color: Colors.blue.shade100,
-            child: Text(
-              "Status: $_orderStatus",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Status: $_orderStatus",
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                if (_etaText.isNotEmpty)
+                  Text(
+                    _etaText,
+                    style: const TextStyle(fontSize: 16, color: Colors.black87),
+                  ),
+              ],
             ),
           ),
           Expanded(

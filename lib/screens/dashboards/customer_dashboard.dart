@@ -17,12 +17,15 @@ class CustomerDashboardPage extends StatefulWidget {
 class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
   String selectedCategory = "All";
   final List<String> categories = ["All", "Beverages", "Snacks", "Fruits", "Vegetables"];
+  int _selectedIndex = 0;
+
   void _logout() async {
     await FirebaseAuth.instance.signOut();
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen()),
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => LoginScreen()),
     );
   }
-
 
   void _onCategoryChanged(String? value) {
     if (value != null) {
@@ -39,12 +42,38 @@ class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
     );
   }
 
+  void _onBottomNavTapped(int index) {
+    setState(() => _selectedIndex = index);
+
+    switch (index) {
+      case 0: // Orders
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => CustomerOrdersPage()),
+        );
+        break;
+      case 1: // Chat
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const CustomerChatsScreen()),
+        );
+        break;
+      case 2: // Cart
+        _openCartDialog();
+        break;
+      case 3: // Logout
+        _logout();
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: _buildAppBar(),
       body: _buildProductsList(),
+      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
@@ -53,60 +82,29 @@ class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
       elevation: 0,
       backgroundColor: Colors.blue[600],
       foregroundColor: Colors.white,
-      title: Text(
-        "FriendlyMart",
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 20,
-        ),
+      title: RichText(
+          text: TextSpan(
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
+            children: [
+              TextSpan(
+                text: 'Friendly',
+                style: TextStyle(color: Colors.yellow[700]!),
+              ),
+              TextSpan(
+                text: 'Mart',
+                style: TextStyle(color: Colors.blue[900]!)
+              ),
+            ],
+          ),
       ),
       actions: [
         CategoryDropdown(
           selectedCategory: selectedCategory,
           categories: categories,
           onChanged: _onCategoryChanged,
-        ),
-        IconButton(
-          icon: Icon(Icons.receipt_long),
-          tooltip: "My Orders",
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => CustomerOrdersPage()),
-            );
-          },
-        ),
-        IconButton(
-          icon: Icon(Icons.chat),
-          tooltip: "Messages",
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CustomerChatsScreen()),
-            );
-          },
-        ),
-        // Real-time cart badge
-        StreamBuilder<DocumentSnapshot>(
-          stream: CartService.getCartStream(),
-          builder: (context, snapshot) {
-            int cartCount = 0;
-            if (snapshot.hasData && snapshot.data!.exists) {
-              final cartData = snapshot.data!.data() as Map<String, dynamic>?;
-              final items = cartData?['items'] as Map<String, dynamic>? ?? {};
-              cartCount = items.length;
-            }
-
-            return CartBadge(
-              itemCount: cartCount,
-              onTap: _openCartDialog,
-            );
-          },
-        ),
-        IconButton(
-          icon: Icon(Icons.logout),
-          onPressed: _logout,
-          tooltip: 'Logout',
         ),
       ],
     );
@@ -138,7 +136,6 @@ class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
           itemBuilder: (context, index) {
             return ProductCard(
               product: products[index],
-              // No callback needed - cart updates are now real-time
             );
           },
         );
@@ -159,6 +156,71 @@ class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBottomNavigationBar() {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: CartService.getCartStream(),
+      builder: (context, snapshot) {
+        int cartCount = 0;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final cartData = snapshot.data!.data() as Map<String, dynamic>?;
+          final items = cartData?['items'] as Map<String, dynamic>? ?? {};
+          cartCount = items.length;
+        }
+
+        return BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onBottomNavTapped,
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: Colors.blue[600],
+          unselectedItemColor: Colors.grey[600],
+          items: [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.receipt_long),
+              label: "Orders",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.chat),
+              label: "Chat",
+            ),
+            BottomNavigationBarItem(
+              icon: Stack(
+                children: [
+                  Icon(Icons.shopping_cart),
+                  if (cartCount > 0)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        padding: EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                        child: Text(
+                          "$cartCount",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              label: "Cart",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.logout),
+              label: "Logout",
+            ),
+          ],
+        );
+      },
     );
   }
 }

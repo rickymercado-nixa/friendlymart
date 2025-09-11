@@ -6,6 +6,7 @@ import '../login.dart';
 import '../../chats/rider_chats.dart';
 import 'package:friendlymart/services/rider_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 
 
 class RiderDashboard extends StatefulWidget {
@@ -133,30 +134,154 @@ class _RiderDashboardState extends State<RiderDashboard> {
                             (deliveryLoc['lng'] as num).toDouble(),
                           );
 
-                          // Navigate to the map first
-                          if (context.mounted) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => DeliveryNavigationScreen(
-                                  customerLocation: customerGeo,
-                                  address: deliveryLoc['address'] ?? "Customer Address",
-                                  riderId: riderUid,
-                                ),
+                          try {
+                            // ✅ Ask for location permission
+                            LocationPermission permission = await Geolocator.requestPermission();
+                            if (permission == LocationPermission.denied ||
+                                permission == LocationPermission.deniedForever) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text("Location permission denied")),
+                              );
+                              return;
+                            }
+
+                            Position riderPosition = await Geolocator.getCurrentPosition(
+                              locationSettings: const LocationSettings(
+                                accuracy: LocationAccuracy.high,
+                                distanceFilter: 10,
                               ),
                             );
-                          }
 
-                          // Then update Firestore to "OnTheWay"
-                          await FirebaseFirestore.instance
-                              .collection("orders")
-                              .doc(doc.id)
-                              .update({
-                            "orderStatus": "OnTheWay",
-                          });
+                            // ✅ Save/update rider location in Firestore
+                            await FirebaseFirestore.instance
+                                .collection("riders")
+                                .doc(riderUid)
+                                .set({
+                              "riderId": riderUid,
+                              "lat": riderPosition.latitude,
+                              "lng": riderPosition.longitude,
+                              "updatedAt": FieldValue.serverTimestamp(),
+                            }, SetOptions(merge: true));
+
+                            if (context.mounted) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => DeliveryNavigationScreen(
+                                    customerLocation: customerGeo,
+                                    address: deliveryLoc['address'] ?? "Customer Address",
+                                    riderId: riderUid,
+                                  ),
+                                ),
+                              );
+                            }
+
+                            await FirebaseFirestore.instance
+                                .collection("orders")
+                                .doc(doc.id)
+                                .update({
+                              "orderStatus": "OnTheWay",
+                            });
+
+                            print("➡️ Navigating to DeliveryNavigationScreen...");
+
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text("Error getting location: $e")),
+                            );
+                          }
                         }
                       },
                       child: const Text("On The Way"),
+                    );
+                  }else if (status == "OnTheWay") {
+                    return ElevatedButton(
+                      onPressed: () async {
+                        final deliveryLoc = data["deliveryLocation"];
+                        final riderUid = FirebaseAuth.instance.currentUser!.uid;
+
+                        if (deliveryLoc != null && deliveryLoc['lat'] != null && deliveryLoc['lng'] != null) {
+                          final customerGeo = LatLng(
+                            (deliveryLoc['lat'] as num).toDouble(),
+                            (deliveryLoc['lng'] as num).toDouble(),
+                          );
+
+                          try {
+                            LocationPermission permission = await Geolocator.requestPermission();
+                            if (permission == LocationPermission.denied ||
+                                permission == LocationPermission.deniedForever) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text("Location permission denied")),
+                              );
+                              return;
+                            }
+
+                            Position riderPosition = await Geolocator.getCurrentPosition(
+                              locationSettings: const LocationSettings(
+                                accuracy: LocationAccuracy.high,
+                                distanceFilter: 10,
+                              ),
+                            );
+
+                            double distanceInMeters = Geolocator.distanceBetween(
+                              riderPosition.latitude,
+                              riderPosition.longitude,
+                              customerGeo.latitude,
+                              customerGeo.longitude,
+                            );
+
+                            if (distanceInMeters <= 1000) {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text("Confirm Delivery"),
+                                  content: const Text("Are you sure you want to mark this order as Delivered?"),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(ctx).pop(false),
+                                      child: const Text("Cancel"),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.of(ctx).pop(true),
+                                      child: const Text("Yes, Delivered"),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (confirm == true) {
+                                await FirebaseFirestore.instance
+                                    .collection("orders")
+                                    .doc(doc.id)
+                                    .update({
+                                  "orderStatus": "Delivered",
+                                });
+
+                                await FirebaseFirestore.instance.collection("notifications").add({
+                                  "orderId": doc.id,
+                                  "type": "Delivered",
+                                  "message": "Your order has been delivered successfully",
+                                  "timestamp": FieldValue.serverTimestamp(),
+                                  "customerId": data['customerId'],
+                                });
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("Order marked as Delivered ✅")),
+                                );
+                              }
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("You must be near the delivery address to mark as Delivered.\nCurrent distance: ${distanceInMeters.toStringAsFixed(1)}m")),
+                              );
+                            }
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text("Error getting location: $e")),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text("Delivered"),
                     );
                   } else {
                     return null;

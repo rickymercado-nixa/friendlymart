@@ -58,13 +58,13 @@ class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
 
             if (_selectedIndex == 0) {
               // Active orders (not cancelled or completed)
-              return status != "Cancelled" && status != "Completed";
+              return status != "Cancelled" && status != "Delivered";
             } else if (_selectedIndex == 1) {
               // Cancelled orders
               return status == "Cancelled";
             } else {
               // Completed orders
-              return status == "Completed";
+              return status == "Delivered";
             }
           }).toList();
 
@@ -95,7 +95,7 @@ class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
                     Icons.receipt,
                     color: orderStatus == "Cancelled"
                         ? Colors.red
-                        : orderStatus == "Completed"
+                        : orderStatus == "Delivered"
                         ? Colors.green
                         : Colors.blue[700],
                   ),
