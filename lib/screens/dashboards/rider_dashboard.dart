@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:friendlymart/screens/ontheway_screen.dart';
 import '../login.dart';
 import '../../chats/rider_chats.dart';
+import '../../chats/chat_screen.dart';
 import 'package:friendlymart/services/rider_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -86,11 +87,16 @@ class _RiderDashboardState extends State<RiderDashboard> {
                 ),
                 subtitle: Text("Total: ₱${data['totalAmount'] ?? '0.00'}"),
                 trailing: () {
-                  final riderUid = FirebaseAuth.instance.currentUser!.uid;
 
                   if (status == "Pending") {
                     return ElevatedButton(
                       onPressed: () async {
+                        final riderUid = FirebaseAuth.instance.currentUser!.uid;
+                        final customerRef = doc['customerId'] as DocumentReference;
+                        final customerId = customerRef.id;
+
+
+                        // ✅ Update order: assign rider + set status
                         await FirebaseFirestore.instance
                             .collection("orders")
                             .doc(doc.id)
@@ -98,6 +104,52 @@ class _RiderDashboardState extends State<RiderDashboard> {
                           "riderId": riderUid,
                           "orderStatus": "Accepted",
                         });
+
+                        // ✅ Create a unique chatId (order-based)
+                        final chatId = "${riderUid}_${customerId}_${doc.id}";
+                        final chatRef = FirebaseFirestore.instance.collection("chats").doc("${riderUid}_$customerId",);
+
+                        final chatDoc = await chatRef.get();
+                        if (!chatDoc.exists) {
+                          await chatRef.set({
+                            "participants": [riderUid, customerId],
+                            "orderId": doc.id,
+                            "createdAt": FieldValue.serverTimestamp(),
+                          });
+
+                          // Send first system message
+                          await chatRef.collection("messages").add({
+                            "senderId": riderUid,
+                            "text": "Hi! I’ve accepted your order 🚴",
+                            "status": "sent",
+                            "timestamp": FieldValue.serverTimestamp(),
+                          });
+/*
+                          await FirebaseFirestore.instance.collection(
+                              "notifications").add({
+                            "orderId": doc.id,
+                            "type": "Accepted",
+                            "message": "Your order has been Accepted by the rider",
+                            "timestamp": FieldValue.serverTimestamp(),
+                            "customerId": data['customerId'],
+                          });
+                          */
+                        }
+
+                        // ✅ Navigate to ChatScreen
+                        if (context.mounted) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(
+                                chatId: chatId,
+                                orderId: doc.id,
+                                customerName: data['customerName'] ?? "Customer",
+                                riderName: "You",
+                              ),
+                            ),
+                          );
+                        }
                       },
                       child: const Text("Accept"),
                     );
@@ -135,7 +187,6 @@ class _RiderDashboardState extends State<RiderDashboard> {
                           );
 
                           try {
-                            // ✅ Ask for location permission
                             LocationPermission permission = await Geolocator.requestPermission();
                             if (permission == LocationPermission.denied ||
                                 permission == LocationPermission.deniedForever) {
@@ -152,7 +203,6 @@ class _RiderDashboardState extends State<RiderDashboard> {
                               ),
                             );
 
-                            // ✅ Save/update rider location in Firestore
                             await FirebaseFirestore.instance
                                 .collection("riders")
                                 .doc(riderUid)
@@ -284,7 +334,7 @@ class _RiderDashboardState extends State<RiderDashboard> {
                       child: const Text("Delivered"),
                     );
                   } else {
-                    return null;
+                    return const SizedBox.shrink();
                   }
                 }(),
               ),

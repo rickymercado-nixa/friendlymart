@@ -7,6 +7,7 @@ import '../../services/product_service.dart';
 import '../../widgets/cart_widget.dart';
 import '../../widgets/product_widgets.dart';
 import 'package:friendlymart/screens/orders_screen.dart';
+import 'package:friendlymart/screens/customer_notification_screen.dart';
 import 'package:friendlymart/chats/customer_chats.dart';
 
 class CustomerDashboardPage extends StatefulWidget {
@@ -85,7 +86,7 @@ class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
       title: RichText(
           text: TextSpan(
             style: const TextStyle(
-              fontSize: 28,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
             children: [
@@ -105,6 +106,15 @@ class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
           selectedCategory: selectedCategory,
           categories: categories,
           onChanged: _onCategoryChanged,
+        ),
+        IconButton(
+          icon: Icon(Icons.notifications),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => NotificationsScreen()),
+            );
+          },
         ),
       ],
     );

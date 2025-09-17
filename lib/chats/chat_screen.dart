@@ -41,7 +41,6 @@ class _ChatScreenState extends State<ChatScreen> {
         .collection("messages")
         .add(message);
 
-    // update to sent
     await ref.update({"status": "sent"});
 
     _msgController.clear();
@@ -83,6 +82,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 }
 
                 final messages = snapshot.data!.docs;
+
+                messages.sort((a, b) {
+                  final aTime = (a["timestamp"] as Timestamp?)?.toDate() ?? DateTime.now();
+                  final bTime = (b["timestamp"] as Timestamp?)?.toDate() ?? DateTime.now();
+                  return bTime.compareTo(aTime);
+                });
 
                 _markMessagesAsSeen();
 
