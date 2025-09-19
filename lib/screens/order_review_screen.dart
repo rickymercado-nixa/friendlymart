@@ -1,39 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'orders_tracking_screen.dart';
 
-class CustomerOrdersPage extends StatefulWidget {
-  const CustomerOrdersPage({super.key});
+class OrderReviewScreen extends StatefulWidget {
+  const OrderReviewScreen({super.key});
 
   @override
-  State<CustomerOrdersPage> createState() => _CustomerOrdersPageState();
+  State<OrderReviewScreen> createState() => _OrderReviewScreenState();
 }
 
-class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
+class _OrderReviewScreenState extends State<OrderReviewScreen> {
   int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    final userRef = FirebaseFirestore.instance.collection('users').doc(currentUser!.uid);
-
     return Scaffold(
       appBar: AppBar(
         title: Text(
           _selectedIndex == 0
-              ? "My Active Orders"
+              ? "Pending Orders"
               : _selectedIndex == 1
-              ? "My Cancelled Orders"
-              : "My Completed Orders",
+              ? "In Progress Orders"
+              : _selectedIndex == 2
+              ? "Cancelled Orders"
+              : "Completed Orders",
         ),
-        backgroundColor: Colors.blue[600],
+        backgroundColor: Colors.blue[700],
         foregroundColor: Colors.white,
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection("orders")
-            .where("customerId", isEqualTo: userRef)
             .orderBy("createdAt", descending: true)
             .snapshots(),
         builder: (context, snapshot) {
@@ -49,22 +45,28 @@ class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
             return _buildEmptyState();
           }
 
-          // filter based on selected tab
           final allOrders = snapshot.data!.docs;
+          for (var doc in allOrders) {
+            final data = doc.data() as Map<String, dynamic>;
+            print("Order ${doc.id} -> ${data['orderStatus']}");
+          }
+
+
+          // Filter based on status
           final orders = allOrders.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             final status = data['orderStatus'] ?? "Pending";
 
             if (_selectedIndex == 0) {
-              // Active orders (not cancelled or completed)
-              return status != "Cancelled" && status != "Delivered";
+              return status == "Accepted" || status == "Pending";
             } else if (_selectedIndex == 1) {
-              // Cancelled orders
+              return status == "Processing" || status == "OnTheWay";
+            } else if (_selectedIndex == 2) {
               return status == "Cancelled";
-            } else {
-              // Completed orders
+            } else if (_selectedIndex == 3) {
               return status == "Delivered";
             }
+            return false;
           }).toList();
 
           if (orders.isEmpty) {
@@ -82,6 +84,7 @@ class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
               final orderStatus = data['orderStatus'] ?? "Pending";
               final totalAmount = data['totalAmount'] ?? 0;
               final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+              final customerId = data['customerId'];
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -99,9 +102,19 @@ class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
                         : Colors.blue[700],
                   ),
                   title: Text("Order #${order.id.substring(0, 6)}"),
-                  subtitle: Text(
-                    "Status: $orderStatus • ₱$totalAmount",
-                    style: const TextStyle(fontSize: 14),
+                  subtitle: FutureBuilder<DocumentSnapshot>(
+                    future: (data['customerId'] as DocumentReference).get(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return Text("Loading customer... • ₱$totalAmount");
+                      }
+                      if (!snapshot.hasData || !snapshot.data!.exists) {
+                        return Text("Unknown Customer • ₱$totalAmount");
+                      }
+                      final userData = snapshot.data!.data() as Map<String, dynamic>;
+                      final customerName = userData['name'] ?? "Unnamed";
+                      return Text("$customerName • ₱$totalAmount");
+                    },
                   ),
                   children: [
                     Padding(
@@ -124,56 +137,46 @@ class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
                               trailing: Text("₱${item['price']}"),
                             );
                           }).toList(),
-                          if (_selectedIndex == 0 && createdAt != null) ...[
-                            const SizedBox(height: 8),
-                            if (DateTime.now().difference(createdAt).inMinutes < 5 &&
-                                (orderStatus == "Pending" || orderStatus == "Processing"))
-                              ElevatedButton.icon(
-                                onPressed: () async {
+
+                          const SizedBox(height: 10),
+                          Text("Current Status: $orderStatus",
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold)),
+                            SizedBox(height: 10),
+                          // Only Admin can update order status
+                          if (orderStatus != "Delivered" &&
+                              orderStatus != "Cancelled")
+                            DropdownButtonFormField<String>(
+                              value: orderStatus,
+                              items: const [
+                                DropdownMenuItem(value: "Accepted", child: Text("Accepted")),
+                                DropdownMenuItem(value: "Pending", child: Text("Pending")),
+                                DropdownMenuItem(value: "Processing", child: Text("Processing")),
+                                DropdownMenuItem(value: "OnTheWay", child: Text("Out for Delivery")),
+                                DropdownMenuItem(value: "Delivered", child: Text("Delivered")),
+                                DropdownMenuItem(value: "Cancelled", child: Text("Cancelled")),
+                              ],
+                              onChanged: (newStatus) async {
+                                if (newStatus != null) {
                                   await FirebaseFirestore.instance
                                       .collection("orders")
                                       .doc(order.id)
-                                      .update({"orderStatus": "Cancelled"});
+                                      .update({"orderStatus": newStatus});
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Order cancelled successfully"),
-                                      backgroundColor: Colors.red,
+                                    SnackBar(
+                                      content: Text("Order status updated to $newStatus"),
+                                      backgroundColor: Colors.blue,
                                     ),
                                   );
-                                },
-                                icon: const Icon(Icons.cancel, color: Colors.white),
-                                label: const Text("Cancel Order"),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8)),
+                                }
+                              },
+                              decoration: InputDecoration(
+                                labelText: "Update Status",
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                              )
-                            else
-                              Text(
-                                "❌ Cannot cancel (time expired)",
-                                style: TextStyle(color: Colors.grey[600]),
-                              ),
-                          ],
-                          if(_selectedIndex == 0)
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => OrderTrackingScreen(orderId: order.id),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.location_on),
-                            label: const Text("Track Order"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     )
@@ -191,10 +194,17 @@ class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
             _selectedIndex = index;
           });
         },
+        selectedItemColor: Colors.blue[700],
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart),
-            label: "Active",
+            icon: Icon(Icons.pending_actions),
+            label: "Pending",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.local_shipping),
+            label: "In Progress",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.cancel),

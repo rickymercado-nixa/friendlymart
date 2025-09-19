@@ -13,8 +13,9 @@ class _ReadProductsPageState extends State<ReadProductsPage> {
   final List<String> categories = [
     "All",
     "Beverages",
-    "Snacks",
     "Fruits",
+    "Meat",
+    "Snacks",
     "Vegetables"
   ];
 

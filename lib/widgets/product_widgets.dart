@@ -128,6 +128,7 @@ class _ProductCardState extends State<ProductCard> {
                     name: widget.product['name'],
                     price: widget.product['price'].toDouble(),
                     stock: stock,
+                    description: widget.product['description'] ?? "No description available",
                   ),
                   SizedBox(height: 12),
                   ProductControls(
@@ -176,49 +177,109 @@ class ProductImage extends StatelessWidget {
   }
 }
 
-class ProductDetails extends StatelessWidget {
+class ProductDetails extends StatefulWidget {
   final String name;
   final double price;
   final int stock;
+  final String description;
 
   const ProductDetails({
     Key? key,
     required this.name,
     required this.price,
     required this.stock,
+    required this.description,
   }) : super(key: key);
+
+  @override
+  _ProductDetailsState createState() => _ProductDetailsState();
+}
+
+class _ProductDetailsState extends State<ProductDetails> {
+  bool showDescription = false;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        /// Product Name
         Text(
-          name,
+          widget.name,
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
             color: Colors.grey[800],
           ),
         ),
+
         SizedBox(height: 4),
+
+        /// Price
         Text(
-          "₱${price.toStringAsFixed(2)}",
+          "₱${widget.price.toStringAsFixed(2)}",
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Colors.blue[700],
           ),
         ),
+
         SizedBox(height: 4),
+
+        /// Stock
         Text(
-          "Stock: $stock",
+          "Stock: ${widget.stock}",
           style: TextStyle(
             fontSize: 12,
-            color: stock > 5 ? Colors.green[600] : Colors.orange[700],
+            color: widget.stock > 5 ? Colors.green[600] : Colors.orange[700],
             fontWeight: FontWeight.w500,
           ),
         ),
+
+        SizedBox(height: 8),
+
+        /// Dropdown Button to Show Description
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              showDescription = !showDescription;
+            });
+          },
+          child: Row(
+            children: [
+              Text(
+                "View Description",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.blue[700],
+                ),
+              ),
+              Icon(
+                showDescription
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
+                color: Colors.blue[700],
+              ),
+            ],
+          ),
+        ),
+
+        /// Expanded Description
+        if (showDescription)
+          Container(
+            margin: EdgeInsets.only(top: 6),
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              widget.description,
+              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+            ),
+          ),
       ],
     );
   }

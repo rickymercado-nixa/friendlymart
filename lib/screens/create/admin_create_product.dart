@@ -27,7 +27,6 @@ class _CreateProductPageState extends State<CreateProductPage> {
     "Vegetables",
     "Beverages",
     "Snacks",
-    "Dairy",
     "Meat",
   ];
 
@@ -95,7 +94,7 @@ class _CreateProductPageState extends State<CreateProductPage> {
       await FirebaseFirestore.instance.collection('products').add({
         'name': nameController.text.trim(),
         'description': descController.text.trim(),
-        'category': _selectedCategory ?? "Uncategorized", // ✅ save dropdown value
+        'category': _selectedCategory ?? "Uncategorized",
         'price': double.tryParse(priceController.text) ?? 0,
         'stock': int.tryParse(stockController.text) ?? 0,
         'createdAt': Timestamp.now(),

@@ -2,9 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
+  @override
+  _NotificationsScreenState createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final String customerId = FirebaseAuth.instance.currentUser!.uid;
+
+  @override
+  void initState() {
+    super.initState();
+    _markAllAsRead();
+  }
+
+  Future<void> _markAllAsRead() async {
+    final snapshot = await _firestore
+        .collection('notifications')
+        .where('customerId', isEqualTo: _firestore.doc('users/$customerId'))
+        .where('isRead', isEqualTo: false)
+        .get();
+
+    for (var doc in snapshot.docs) {
+      await doc.reference.update({'isRead': true});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

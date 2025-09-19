@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 
 class MapLocationPicker extends StatefulWidget {
   final String initialAddress;
@@ -21,18 +23,52 @@ class MapLocationPicker extends StatefulWidget {
 
 class _MapLocationPickerState extends State<MapLocationPicker> {
   late GoogleMapController _mapController;
-  LatLng _selectedLatLng = const LatLng(6.2303, 125.0829); // Polomolok
+  LatLng _selectedLatLng = const LatLng(6.2303, 125.0829);
   bool _isLoading = true;
   String _currentAddress = '';
   bool _mapControllerReady = false;
 
-  // ✅ Replace with your OpenCage API key
   static const String _apiKey = "dc4945bc771f4780bc040ec0f7708044";
+
+  StreamSubscription<Position>? _positionStream;
 
   @override
   void initState() {
     super.initState();
     _initLocation();
+
+    // Start listening to location updates
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 1, // update every 5 meters
+      ),
+    ).listen((Position pos) async {
+      final newLatLng = LatLng(pos.latitude, pos.longitude);
+
+      setState(() {
+        _selectedLatLng = newLatLng; // move red marker
+      });
+
+      // Optional: update address in real-time
+      _currentAddress = await _getAddressFromLatLng(
+        pos.latitude,
+        pos.longitude,
+      );
+
+      // Optional: move camera smoothly to follow
+      if (_mapControllerReady) {
+        _mapController.animateCamera(
+          CameraUpdate.newLatLng(newLatLng),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    super.dispose();
   }
 
   Future<void> _initLocation() async {
@@ -40,27 +76,36 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
     LatLng? latLng;
 
-    // Priority 1: Explicit coordinates
-    if (widget.initialLat != null && widget.initialLng != null) {
-      latLng = LatLng(widget.initialLat!, widget.initialLng!);
-      _currentAddress = widget.initialAddress;
-    }
-    // Priority 2: Parse if address is "lat,lng"
-    else if (widget.initialAddress.contains(",") &&
-        _isCoordinateString(widget.initialAddress)) {
-      final parts = widget.initialAddress.split(",");
-      final lat = double.tryParse(parts[0].trim());
-      final lng = double.tryParse(parts[1].trim());
-      if (lat != null && lng != null) {
-        latLng = LatLng(lat, lng);
-        _currentAddress = await _getAddressFromLatLng(lat, lng);
+    try {
+      // 1. Check permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        permission = await Geolocator.requestPermission();
       }
+
+      if (permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse) {
+        // 2. Get current location
+        Position pos = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high);
+
+        latLng = LatLng(pos.latitude, pos.longitude);
+        _currentAddress =
+        await _getAddressFromLatLng(pos.latitude, pos.longitude);
+      }
+    } catch (e) {
+      debugPrint("⚠️ Location error: $e");
     }
-    // Priority 3: Forward geocode text address
-    else if (widget.initialAddress.isNotEmpty) {
-      latLng = await _getLatLngFromAddress(widget.initialAddress);
-      if (latLng != null) {
+    // 3. If no GPS, fallback to initial props
+    if (latLng == null) {
+      if (widget.initialLat != null && widget.initialLng != null) {
+        latLng = LatLng(widget.initialLat!, widget.initialLng!);
         _currentAddress = widget.initialAddress;
+      } else if (widget.initialAddress.isNotEmpty) {
+        latLng = await _getLatLngFromAddress(widget.initialAddress);
+        _currentAddress =
+        latLng != null ? widget.initialAddress : "Polomolok, South Cotabato";
       } else {
         latLng = const LatLng(6.2303, 125.0829);
         _currentAddress = "Polomolok, South Cotabato";
@@ -140,9 +185,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         final data = json.decode(response.body);
 
         if (data['results'] != null && data['results'].isNotEmpty) {
-          final formatted = data['results'][0]['formatted'];
-          debugPrint("✅ Reverse geocode result: $formatted");
-          return formatted; // ✅ return human-readable address
+          return data['results'][0]['formatted'];
         } else {
           debugPrint("⚠️ No results from OpenCage for $lat,$lng");
         }

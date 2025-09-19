@@ -79,27 +79,30 @@ class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
   }
 
   PreferredSizeWidget _buildAppBar() {
+    final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+    final String? customerId = FirebaseAuth.instance.currentUser?.uid;
+
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.blue[600],
       foregroundColor: Colors.white,
       title: RichText(
-          text: TextSpan(
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-            children: [
-              TextSpan(
-                text: 'Friendly',
-                style: TextStyle(color: Colors.yellow[700]!),
-              ),
-              TextSpan(
-                text: 'Mart',
-                style: TextStyle(color: Colors.blue[900]!)
-              ),
-            ],
+        text: TextSpan(
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
           ),
+          children: [
+            TextSpan(
+              text: 'Friendly',
+              style: TextStyle(color: Colors.yellow[700]!),
+            ),
+            TextSpan(
+              text: 'Mart',
+              style: TextStyle(color: Colors.blue[900]!),
+            ),
+          ],
+        ),
       ),
       actions: [
         CategoryDropdown(
@@ -107,18 +110,62 @@ class _CustomerDashboardPageState extends State<CustomerDashboardPage> {
           categories: categories,
           onChanged: _onCategoryChanged,
         ),
-        IconButton(
-          icon: Icon(Icons.notifications),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => NotificationsScreen()),
+        StreamBuilder<QuerySnapshot>(
+          stream: _firestore
+              .collection('notifications')
+              .where('customerId', isEqualTo: _firestore.doc('users/$customerId'))
+              .where('isRead', isEqualTo: false)
+              .snapshots(),
+          builder: (context, snapshot) {
+            int notifCount = 0;
+            if (snapshot.hasData) {
+              notifCount = snapshot.data!.docs.length;
+            }
+            return Stack(
+              children: [
+                IconButton(
+                  icon: Icon(Icons.notifications),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => NotificationsScreen(),
+                      ),
+                    );
+                  },
+                ),
+                if (notifCount > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      child: Text(
+                        '$notifCount',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
             );
           },
         ),
       ],
     );
   }
+
 
   Widget _buildProductsList() {
     return StreamBuilder<QuerySnapshot>(

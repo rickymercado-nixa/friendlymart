@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:friendlymart/models/riderapproval_page.dart';
 import 'package:friendlymart/screens/create/admin_create_product.dart';
+import 'package:friendlymart/screens/order_review_screen.dart';
 import 'package:friendlymart/screens/read/admin_read_product.dart';
 import 'package:friendlymart/screens/login.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -123,11 +124,15 @@ class DashboardAnalyticsPage extends StatelessWidget {
           const SizedBox(height: 10),
 
           ListTile(
-            leading: Icon(Icons.sms, color: primaryBlue),
-            title: const Text("SMS Notifications"),
-            subtitle: const Text("Manage automated order & delivery alerts"),
+            leading: Icon(Icons.receipt, color: primaryBlue),
+            title: const Text("Order Review"),
+            subtitle: const Text("Review Orders"),
             trailing: const Icon(Icons.arrow_forward_ios, size: 18),
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                  context, MaterialPageRoute(builder: (_) => const OrderReviewScreen()),
+              );
+            },
           ),
           ListTile(
             leading: Icon(Icons.chat, color: Colors.green[700]),
